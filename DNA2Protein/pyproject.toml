@@ -1,0 +1,8 @@
+[project]
+name = "dna2protein-aligner"
+version = "0.1.0"
+description = "Align a reference protein FASTA against the best translated region from a query DNA FASTA."
+requires-python = ">=3.10"
+dependencies = [
+    "biopython>=1.84",
+]
