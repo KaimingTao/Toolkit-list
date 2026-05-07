@@ -42,4 +42,5 @@ python3 main.py --genbank-input records.gb --extract-source-csv source.csv
 - `--dry-run` prints the number of unique accessions, skipped headers, and planned batches.
 - Headers without a recognizable accession are skipped and reported on stderr.
 - Downloads use NCBI `efetch` from the `nuccore` database with `rettype=gb`.
-- `--extract-source-csv` writes a CSV with `accession`, `source_location`, and the raw `source_feature` block from `FEATURES`.
+- `--extract-source-csv` parses each GenBank record's `FEATURES` section and writes one CSV row per record keyed by `accession`.
+- The CSV always includes `accession` and `source_location`, then adds `source_*` columns for any parsed source qualifiers such as `source_organism`, `source_mol_type`, and `source_db_xref`.

@@ -93,12 +93,19 @@ def extract_accession_from_genbank(record: str) -> str:
     raise ValueError("Missing ACCESSION line in GenBank record.")
 
 
-def extract_source_feature(record: str) -> tuple[str, str]:
+def parse_qualifier_value(raw_value: str) -> str:
+    value = raw_value.strip()
+    if value.startswith('"') and value.endswith('"'):
+        return value[1:-1]
+    return value
+
+
+def parse_source_feature(record: str) -> dict[str, str]:
     lines = record.splitlines()
     in_features = False
-    source_lines: list[str] = []
-    source_started = False
-    source_indent = 5
+    source_location = ""
+    qualifiers: dict[str, str] = {}
+    current_key: str | None = None
 
     for line in lines:
         if line.startswith("FEATURES             Location/Qualifiers"):
@@ -109,25 +116,29 @@ def extract_source_feature(record: str) -> tuple[str, str]:
         if line.startswith("ORIGIN") or line.startswith("BASE COUNT") or line.startswith("CONTIG"):
             break
 
-        if not source_started:
-            if len(line) > 21 and line[:21] == " " * 5 + "source" + " " * 10:
-                source_started = True
-                source_indent = len(line) - len(line.lstrip(" "))
-                source_lines.append(line)
+        feature_key = line[5:21] if len(line) >= 21 else ""
+        content = line[21:].rstrip() if len(line) > 21 else ""
+
+        if source_location:
+            if feature_key.strip():
+                break
+            if not content:
+                continue
+            if content.startswith("/"):
+                key, _, raw_value = content[1:].partition("=")
+                qualifiers[key] = parse_qualifier_value(raw_value)
+                current_key = key
+            elif current_key is not None:
+                qualifiers[current_key] = f"{qualifiers[current_key]} {parse_qualifier_value(content)}".strip()
             continue
 
-        current_indent = len(line) - len(line.lstrip(" "))
-        if current_indent == source_indent and line[source_indent : source_indent + 1].isalpha():
-            break
-        source_lines.append(line)
+        if feature_key.strip() == "source":
+            source_location = content.strip()
 
-    if not source_lines:
-        return "", ""
-
-    first_line = source_lines[0]
-    source_location = first_line[21:].strip()
-    source_text = "\n".join(line.rstrip() for line in source_lines)
-    return source_location, source_text
+    source_data = {"source_location": source_location}
+    for key, value in qualifiers.items():
+        source_data[f"source_{key}"] = value
+    return source_data
 
 
 def write_source_csv(genbank_path: Path, output_path: Path) -> int:
@@ -136,22 +147,22 @@ def write_source_csv(genbank_path: Path, output_path: Path) -> int:
         print(f"No GenBank records found in {genbank_path}", file=sys.stderr)
         return 1
 
+    rows: list[dict[str, str]] = []
+    fieldnames = ["accession", "source_location"]
+
+    for record in records:
+        accession = extract_accession_from_genbank(record)
+        source_data = parse_source_feature(record)
+        row = {"accession": accession, **source_data}
+        rows.append(row)
+        for key in row:
+            if key not in fieldnames:
+                fieldnames.append(key)
+
     with output_path.open("w", newline="") as handle:
-        writer = csv.DictWriter(
-            handle,
-            fieldnames=["accession", "source_location", "source_feature"],
-        )
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
-        for record in records:
-            accession = extract_accession_from_genbank(record)
-            source_location, source_text = extract_source_feature(record)
-            writer.writerow(
-                {
-                    "accession": accession,
-                    "source_location": source_location,
-                    "source_feature": source_text,
-                }
-            )
+        writer.writerows(rows)
 
     print(f"Wrote source feature CSV for {len(records)} record(s) to {output_path}")
     return 0
