@@ -143,8 +143,12 @@ def parse_source_feature(record: str) -> dict[str, str]:
 
 def write_source_csv(genbank_path: Path, output_path: Path) -> int:
     records = split_genbank_records(genbank_path.read_text())
+    return write_source_csv_records(records, output_path)
+
+
+def write_source_csv_records(records: list[str], output_path: Path) -> int:
     if not records:
-        print(f"No GenBank records found in {genbank_path}", file=sys.stderr)
+        print("No GenBank records found.", file=sys.stderr)
         return 1
 
     rows: list[dict[str, str]] = []
@@ -197,23 +201,21 @@ def main() -> int:
     parser.add_argument(
         "--extract-source-csv",
         type=Path,
-        help="Read an existing GenBank file from --genbank-input and write source features to CSV",
+        default=Path("source.csv"),
+        help="Output CSV path for parsed source features from --genbank-input",
     )
     parser.add_argument(
         "--genbank-input",
         type=Path,
-        help="Input GenBank file used with --extract-source-csv",
+        help="Input GenBank file to parse into source-feature CSV",
     )
     args = parser.parse_args()
 
-    if args.extract_source_csv is not None:
-        if args.genbank_input is None:
-            print("--genbank-input is required with --extract-source-csv", file=sys.stderr)
-            return 1
+    if args.genbank_input is not None:
         return write_source_csv(args.genbank_input, args.extract_source_csv)
 
     if args.fasta is None:
-        print("FASTA input is required unless using --extract-source-csv.", file=sys.stderr)
+        print("FASTA input is required unless using --genbank-input.", file=sys.stderr)
         return 1
 
     headers = parse_fasta_headers(args.fasta)
@@ -237,6 +239,8 @@ def main() -> int:
 
     genbank_text = fetch_genbank_records(accessions, args.batch_size)
     args.output.write_text(genbank_text)
+    records = split_genbank_records(genbank_text)
+    write_source_csv_records(records, args.extract_source_csv)
 
     print(f"Downloaded {len(accessions)} GenBank record(s) to {args.output}")
     if missing_headers:
