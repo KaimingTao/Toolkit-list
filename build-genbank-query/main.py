@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+from http.client import IncompleteRead
 import re
 import sys
+import time
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 
 ACCESSION_PATTERNS = (
@@ -14,6 +17,9 @@ ACCESSION_PATTERNS = (
     re.compile(r"\b(?:NC|NG|NM|NP|NR|NT|NW|XM|XP|XR|WP|AP|AC|CP|AE|BK|CM)_\d+(?:\.\d+)?\b"),
 )
 EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+REQUEST_TIMEOUT_SECONDS = 60
+MAX_FETCH_RETRIES = 4
+RETRYABLE_HTTP_STATUSES = {408, 429, 500, 502, 503, 504}
 
 
 def parse_fasta_headers(path: Path) -> list[str]:
@@ -61,19 +67,75 @@ def batched(values: list[str], size: int) -> list[list[str]]:
     return [values[index : index + size] for index in range(0, len(values), size)]
 
 
+def fetch_genbank_batch(batch: list[str]) -> str:
+    query = urlencode(
+        {
+            "db": "nuccore",
+            "id": ",".join(batch),
+            "rettype": "gb",
+            "retmode": "text",
+        }
+    )
+    request = Request(
+        f"{EFETCH_URL}?{query}",
+        headers={
+            "Accept-Encoding": "identity",
+            "User-Agent": "build-genbank-query/1.0",
+        },
+    )
+
+    delay_seconds = 1.0
+    for attempt in range(1, MAX_FETCH_RETRIES + 1):
+        try:
+            with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                return response.read().decode("utf-8")
+        except IncompleteRead as exc:
+            should_retry = attempt < MAX_FETCH_RETRIES
+            if not should_retry:
+                raise RuntimeError(
+                    "NCBI returned a truncated response while fetching accessions "
+                    f"{batch[0]}..{batch[-1]} after {attempt} attempts."
+                ) from exc
+        except HTTPError as exc:
+            should_retry = exc.code in RETRYABLE_HTTP_STATUSES and attempt < MAX_FETCH_RETRIES
+            if not should_retry:
+                raise
+        except URLError as exc:
+            should_retry = attempt < MAX_FETCH_RETRIES
+            if not should_retry:
+                raise RuntimeError(
+                    "Network error while fetching GenBank records for accessions "
+                    f"{batch[0]}..{batch[-1]} after {attempt} attempts."
+                ) from exc
+
+        time.sleep(delay_seconds)
+        delay_seconds *= 2
+
+    raise RuntimeError("Unreachable retry state while fetching GenBank records.")
+
+
+def fetch_genbank_batch_with_split(batch: list[str]) -> str:
+    try:
+        return fetch_genbank_batch(batch)
+    except Exception:
+        if len(batch) == 1:
+            raise
+
+    midpoint = len(batch) // 2
+    left_batch = batch[:midpoint]
+    right_batch = batch[midpoint:]
+    print(
+        "Splitting failed batch of "
+        f"{len(batch)} accession(s) into {len(left_batch)} and {len(right_batch)}.",
+        file=sys.stderr,
+    )
+    return fetch_genbank_batch_with_split(left_batch) + fetch_genbank_batch_with_split(right_batch)
+
+
 def fetch_genbank_records(accessions: list[str], batch_size: int) -> str:
     chunks: list[str] = []
     for batch in batched(accessions, batch_size):
-        query = urlencode(
-            {
-                "db": "nuccore",
-                "id": ",".join(batch),
-                "rettype": "gb",
-                "retmode": "text",
-            }
-        )
-        with urlopen(f"{EFETCH_URL}?{query}") as response:
-            chunks.append(response.read().decode("utf-8"))
+        chunks.append(fetch_genbank_batch_with_split(batch))
     return "".join(chunks)
 
 
