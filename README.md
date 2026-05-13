@@ -1,21 +1,21 @@
-# Toolkit-list
+# Toolkit
 
-## Web applications
+## Noting
 
-- [URL decoder](https://kaimingtao.github.io/Toolkit-list/url-decoder/)
-- [Online text diff, for anything](https://kaimingtao.github.io/Toolkit-list/text-compare/)
-- [Image cropper](https://kaimingtao.github.io/Toolkit-list/image-cropper/)
+- URL decoder
+    - https://kaimingtao.github.io/Toolkit/url-decoder/
+- Online text diff, for anything
+    - https://kaimingtao.github.io/Toolkit/text-compare/
 
-## Scripts
+## Multimedia
 
-- [Merge images vertically](./src/2026-01-20/merge_images.py)
-- [Create short video from text, iphone size](https://github.com/KaimingTao/quick-card-video)
+- Image cropper
+    - https://kaimingtao.github.io/Toolkit/image-cropper/
 
-- [Update all local github repositories to latest version](./src/2026-01-24/up_to_date.py)
-- [Clone all github repos](./src/2026-01-26/clone_github.py)
+- Merge images vertically
+    - https://github.com/KaimingTao/Toolkit/tree/main/merge-images
 
-## On going
+## Literature
 
-- [Text editor exp](https://github.com/KaimingTao/text-editors)
-- [Coding toolkit](https://github.com/KaimingTao/code-ocean)
-- [Tools for taking notes](https://github.com/KaimingTao/noting)
+- Download open source papers from PubMed
+    - https://github.com/KaimingTao/Toolkit/tree/main/download-oa-paper
